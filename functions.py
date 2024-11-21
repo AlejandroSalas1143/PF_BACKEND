@@ -1,31 +1,6 @@
 import pandas as pd
-from model import train_predict_and_format_df
-
-def process_data():
-    data = pd.read_csv('https://docs.google.com/spreadsheets/d/1qwgm-JvaNb8brhYQBnGgvOQ9nQZOFP3aPRcHC_9VEAY/export?format=csv')
-    # Convertir la columna 'Fecha' a tipo datetime
-    data['Fecha'] = pd.to_datetime(data['Fecha'])
-    data = data.sort_values(by='Fecha')
-
-
-    train_data = data[data['Fecha'] < '2023-08-01']
-    test_data = data[data['Fecha'] >= '2023-08-01']
-
-    train_data.loc[:, 'Fecha'] = train_data['Fecha'].apply(lambda x: x.toordinal())
-    test_data.loc[:, 'Fecha'] = test_data['Fecha'].apply(lambda x: x.toordinal())
-
-    print("AQUI ESTOY MAL")
-    train_df = pd.DataFrame()
-
-    for i in range(0, len(train_data)-12, 1):
-
-        block = train_data.iloc[i:i+12]
-
-        train_df = pd.concat([train_df, pd.DataFrame([block.values.flatten()])], ignore_index=True)
-    
-    train_y_df = train_data[12:]
-    return train_df, train_y_df
-
+from model import prediccion
+import os
 def create_rolling_flattened_blocks(df, date_column, block_size=12):
     """
     Crea un nuevo DataFrame aplanado a partir de bloques de tamaño especificado
@@ -41,13 +16,12 @@ def create_rolling_flattened_blocks(df, date_column, block_size=12):
     """
     df[date_column] = pd.to_datetime(df[date_column])
     df = df.sort_values(by=date_column)
-    print("WEJEEEE")
-    print(df)
+
     test_y_df = df.copy()
     # dataframe_test_y['Fecha'] = dataframe_test_y['Fecha'].apply(lambda x: datetime.fromordinal(x))
 
     df[date_column] = df[date_column].apply(lambda x: x.toordinal())
-    print(df)
+
     result_df = pd.DataFrame()
 
     for i in range(0, len(df) - block_size + 1):
@@ -57,9 +31,33 @@ def create_rolling_flattened_blocks(df, date_column, block_size=12):
 
 
         result_df = pd.concat([result_df, flattened_block], ignore_index=True)
-    print(result_df)
-    print("AQUI ESTOY BIEN")
-    train_df, train_y_df = process_data()
-    print("PASEE")
-    result_rf = train_predict_and_format_df(train_df, train_y_df, result_df, test_y_df)
+    
+    result_rf = prediccion( result_df, test_y_df)
+    result_rf.to_csv('result.csv')
+    print(f"Archivo guardado en: {os.path.abspath('result.csv')}")
+    indicadores_prediccion = calcular_indicadores(result_rf)
+    indicadores_prediccion.to_csv('prediccion_indicadores.csv', index=False)
     return result_rf
+
+
+
+def calcular_indicadores(data):
+    # Crear un nuevo DataFrame para los resultados
+    resultados = pd.DataFrame()
+
+    # Calcular cada indicador y agregarlo al DataFrame de resultados
+    resultados['ROTACION INVENTARIO'] = data['RI Costo mercancia/bienes vendidos'] / data['RI Valor promedio del inventario']
+    resultados['LIQUIDEZ'] = data['LIQ Activos corrientes'] / data['LIQ Pasivos corrientes']
+    resultados['ENDEUDAMIENTO CORTO PLAZO'] = data['ECP Pasivo no corriente'] / data['ECP Patrimonio neto']
+    resultados['ENDEUDAMIENTO LARGO PLAZO'] = data['ELP Pasivo corriente'] / data['ELP Patrimonio neto']
+    resultados['COBERTURA DE INTERESES'] = data['CI Utilidades antes de intereses e impuestos'] / data['CI Gastos financieros']
+    resultados['MARGEN DE UTILIDAD BRUTA (%)'] = ((data['MUB Ingresos totales'] - data['MUB Costo de productos y servicios']) / data['MUB Ingresos totales']) * 100
+    resultados['MARGEN DE UTILIDAD NETA (%)'] = ((data['MUN Ingresos totales'] - data['MUN Gastos fijos y variables'] - data['MUN Gastos e impuestos']) / data['MUN Ingresos totales']) * 100
+    resultados['ROA (%)'] = ((data['ROA Ganancia antes de impuestos'] - data['ROA Impuestos pagados']) / data['ROA Activos totales']) * 100
+    resultados['ROI (%)'] = (data['ROI Ganancia'] / data['ROI Inversion']) * 100
+    resultados['SOLVENCIA'] = (data['SOL Activos corrientes'] + data['SOL Activos no corrientes']) / (data['SOL Pasivos corrientes'] + data['SOL Pasivos no corrientes'])
+    resultados['Fecha'] = data['Fecha']
+    # Establecer la opción de mostrar los números con 3 decimales
+    pd.set_option('display.float_format', lambda x: f'{x:.03f}')
+
+    return resultados

@@ -1,62 +1,70 @@
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.metrics import mean_squared_error, r2_score
 import pandas as pd
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
+from joblib import load
 
 
-def train_predict_and_format_df(train_df, train_y_df, test_df, test_y_df, random_state=42):
-    """
-    Entrena un modelo Random Forest de múltiples salidas, realiza predicciones, y formatea los resultados en un DataFrame.
+def prediccion ( test_df, test_y_df):
+   modelo = load('multi_output_forest.joblib')
+   y_pred_test = modelo.predict(test_df)
+   lista_predicciones = test_df.copy()
 
-    Args:
-        train_df (pd.DataFrame): Datos de entrenamiento para las características.
-        train_y_df (pd.DataFrame): Datos de entrenamiento para las etiquetas (salidas).
-        test_df (pd.DataFrame): Datos de prueba para realizar las predicciones.
-        test_y_df (pd.DataFrame): Datos de prueba con la columna de Fecha para asignar a las predicciones.
-        random_state (int): Semilla para el modelo Random Forest (por defecto 42).
+   
+   y_pred_test_reshaped = y_pred_test.reshape(-1, 25)  # Asegúrate de que tenga la forma (n_filas, 25)
 
-    Returns:
-        pd.DataFrame: DataFrame con las predicciones formateadas y la columna de Fecha convertida a formato datetime.
-    """
-    forest = RandomForestRegressor(random_state=random_state)
-    multi_output_forest = MultiOutputRegressor(forest)
+   # Convertir a DataFrame con nombres de columnas apropiados
+   y_pred_df = pd.DataFrame(y_pred_test_reshaped, columns=[f"Predicted_{i+1}" for i in range(25)])
+   predictions_df = pd.DataFrame()
+   # Concatenar el DataFrame test_df (desde el índice 25) y y_pred_df
+   lista_predicciones = pd.concat([test_df.iloc[:, 25:], y_pred_df], axis=1)
+   predictions_df = pd.concat([predictions_df, y_pred_df], ignore_index=True)
 
-    multi_output_forest.fit(train_df, train_y_df)
-    print("Lo entrene")
-    print(test_df)
-    y_pred_test = multi_output_forest.predict(test_df)
-    print("lo hice")
-    df = pd.DataFrame(y_pred_test)
+   # Número de repeticiones
+   n_iterations = 12  # Ajusta este número según lo que necesites
 
-    pd.set_option('display.float_format', '{:.0f}'.format)
+   # Iterar sobre el número de veces que desees hacer la predicción
+   for i in range(n_iterations):
+      # Asegurarse de que las columnas tengan nombres enteros del 0 al 299
+      lista_predicciones.columns = [i for i in range(300)]
 
-    df.columns = ['RI Costo mercancia/bienes vendidos',
-       'RI Valor promedio del inventario', 'LIQ Activos corrientes',
-       'LIQ Pasivos corrientes', 'ECP Pasivo no corriente',
-       'ECP Patrimonio neto', 'ELP Pasivo corriente', 'ELP Patrimonio neto',
-       'CI Utilidades antes de intereses e impuestos', 'CI Gastos financieros',
-       'MUB Ingresos totales', 'MUB Costo de productos y servicios',
-       'MUN Gastos fijos y variables', 'MUN Gastos e impuestos',
-       'MUN Ingresos totales', 'ROA Ganancia antes de impuestos',
-       'ROA Impuestos pagados', 'ROA Activos totales', 'ROI Ganancia',
-       'ROI Inversion', 'SOL Activos no corrientes', 'SOL Activos corrientes',
-       'SOL Pasivos corrientes', 'SOL Pasivos no corrientes', 'Fecha']
-    print("YEII")
-    print(test_y_df)
+      # Realizar la predicción para lista_predicciones
+      y_pred_test = modelo.predict(lista_predicciones)
+      # Redimensionar las predicciones (asegurarse de que sea de la forma (n_filas, 25))
+      y_pred_test_reshaped = y_pred_test.reshape(-1, 25)
+      # Convertir las predicciones a DataFrame con nombres de columnas apropiados
+      y_pred_df = pd.DataFrame(y_pred_test_reshaped, columns=[f"Predicted_{i+1}" for i in range(25)])
+      # Agregar las predicciones como una nueva fila en el DataFrame predictions_df
+      predictions_df = pd.concat([predictions_df, y_pred_df], ignore_index=True)
 
-    # Obtener la última fecha de test_y_df['Fecha']
-    last_date = test_y_df['Fecha'].max()
-    print(last_date)
-    # Sumarle un mes a la última fecha
-    new_date = last_date + relativedelta(months=1)
+      # Imprimir el progreso (opcional)
+      print(f"Iteration {i+1} completed.")
 
-    # Asignar la nueva fecha a toda la columna 'Fecha' de df
-    df['Fecha'] = new_date
+      # Actualizar lista_predicciones con las predicciones acumuladas como nuevas columnas
+      lista_predicciones = pd.concat([lista_predicciones.iloc[:, 25:], y_pred_df], axis=1)
 
-    # df['Fecha'] = test_y_df['Fecha'].reset_index(drop=True)
-    # df['Fecha'] = df['Fecha'].apply(lambda x: datetime.fromordinal(x))
-    # print("YEIII2")
-    # print(df)
-    return df
+
+
+   # Mostrar el DataFrame
+   predictions_df.columns = ['RI Costo mercancia/bienes vendidos',
+         'RI Valor promedio del inventario', 'LIQ Activos corrientes',
+         'LIQ Pasivos corrientes', 'ECP Pasivo no corriente',
+         'ECP Patrimonio neto', 'ELP Pasivo corriente', 'ELP Patrimonio neto',
+         'CI Utilidades antes de intereses e impuestos', 'CI Gastos financieros',
+         'MUB Ingresos totales', 'MUB Costo de productos y servicios',
+         'MUN Gastos fijos y variables', 'MUN Gastos e impuestos',
+         'MUN Ingresos totales', 'ROA Ganancia antes de impuestos',
+         'ROA Impuestos pagados', 'ROA Activos totales', 'ROI Ganancia',
+         'ROI Inversion', 'SOL Activos no corrientes', 'SOL Activos corrientes',
+         'SOL Pasivos corrientes', 'SOL Pasivos no corrientes', 'Fecha']
+
+   # Lista de fechas que deseas asignar
+   fechas = pd.to_datetime(["2024-08-01","2024-09-01", "2024-10-01", "2024-11-01", "2024-12-01", "2025-01-01", "2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01"])
+
+   # Verificar si el número de filas en predictions_df coincide con la cantidad de fechas
+   if len(predictions_df) == len(fechas):
+      # Asignar las fechas al DataFrame
+      predictions_df['Fecha'] = fechas
+   else:
+      print(f"El número de filas de predictions_df ({len(predictions_df)}) no coincide con el número de fechas ({len(fechas)})")
+
+
+   return predictions_df 
