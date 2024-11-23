@@ -85,7 +85,7 @@ async def upload_excel(file: UploadFile = File(...)):
 @app.get("/indicadores")
 async def get_indicadores(nombre: str):
     # Leer el archivo CSV
-    df_indicadores = pd.read_csv("resultados_indicadores.csv")
+    df_indicadores = pd.read_csv("prediccion_indicadores.csv")
     # Verificar si el nombre del indicador existe en las columnas
     if nombre not in df_indicadores.columns:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
