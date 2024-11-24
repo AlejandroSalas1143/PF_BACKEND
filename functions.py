@@ -32,7 +32,7 @@ def create_rolling_flattened_blocks(df, date_column, block_size=12):
         result_df = pd.concat([result_df, flattened_block], ignore_index=True)
     
     result_rf = prediccion( result_df, test_y_df)
-    result_rf.to_csv('result.csv')
+    result_rf.to_csv('result.csv', index=False)
     print(f"Archivo guardado en: {os.path.abspath('result.csv')}")
     indicadores_prediccion = calcular_indicadores(result_rf)
     indicadores_prediccion.to_csv('prediccion_indicadores.csv', index=False)

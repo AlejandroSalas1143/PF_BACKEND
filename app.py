@@ -118,8 +118,8 @@ async def get_data_indicadores(nombre: str):
 
     result = df_data[["Fecha", nombre]].sort_values(by="Fecha")
 
-    result = df_data.to_dict(orient="records")
-    return result
+    result_list = result.to_dict(orient="records")
+    return result_list
 
 genai.configure(api_key=API_KEY)
 generation_config = {
@@ -173,23 +173,3 @@ async def preguntar(request: Request):
     respuesta = generar_respuesta(informacion, pregunta, prompt_numero)
     
     return {"respuesta": respuesta}
-
-# def generar_respuesta(informacion, pregunta):
-#     # Lógica para procesar la información y responder a la pregunta
-#     return f"Procesé la información: {informacion} para responder a la pregunta '{pregunta}'."
-
-
-
-
-# Ruta para preguntar
-# @app.post("/preguntar")
-# async def preguntar(request: Request):
-#     data = await request.json()
-#     informacion = data["informacion"]
-#     pregunta = data["pregunta"]
-#     prompt_numero = data["prompt_numero"]  # Número del prompt que se desea usar
-    
-#     # Generar la respuesta utilizando el prompt seleccionado
-#     respuesta = generar_respuesta(informacion, pregunta, prompt_numero)
-    
-#     return {"respuesta": respuesta}

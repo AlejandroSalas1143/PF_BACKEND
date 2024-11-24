@@ -48,6 +48,5 @@ def prediccion ( test_df, test_y_df):
       predictions_df['Fecha'] = fechas
    else:
       print(f"El número de filas de predictions_df ({len(predictions_df)}) no coincide con el número de fechas ({len(fechas)})")
-
-
+   
    return predictions_df 
