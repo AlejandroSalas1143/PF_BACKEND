@@ -7,3 +7,4 @@ unidecode
 scikit-learn
 numpy
 python-dateutil
+google-generativeai

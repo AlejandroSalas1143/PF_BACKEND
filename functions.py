@@ -18,7 +18,6 @@ def create_rolling_flattened_blocks(df, date_column, block_size=12):
     df = df.sort_values(by=date_column)
 
     test_y_df = df.copy()
-    # dataframe_test_y['Fecha'] = dataframe_test_y['Fecha'].apply(lambda x: datetime.fromordinal(x))
 
     df[date_column] = df[date_column].apply(lambda x: x.toordinal())
 
@@ -57,7 +56,7 @@ def calcular_indicadores(data):
     resultados['ROI (%)'] = (data['ROI Ganancia'] / data['ROI Inversion']) * 100
     resultados['SOLVENCIA'] = (data['SOL Activos corrientes'] + data['SOL Activos no corrientes']) / (data['SOL Pasivos corrientes'] + data['SOL Pasivos no corrientes'])
     resultados['Fecha'] = data['Fecha']
-    # Establecer la opción de mostrar los números con 3 decimales
-    pd.set_option('display.float_format', lambda x: f'{x:.03f}')
-
+    
+    resultados = resultados.round(3)
+    
     return resultados

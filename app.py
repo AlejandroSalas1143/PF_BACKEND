@@ -1,13 +1,12 @@
 import io
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from io import BytesIO
 import unidecode
 from functions import create_rolling_flattened_blocks, calcular_indicadores
-
-# from model import train_predict_and_format_df
-
+import google.generativeai as genai
+from config import API_KEY 
 app = FastAPI()
 
 app.add_middleware(
@@ -17,23 +16,6 @@ app.add_middleware(
     allow_methods=["*"],  # Permite todos los métodos HTTP: GET, POST, etc.
     allow_headers=["*"],  # Permite todos los headers
 )
-
-# train_df, train_y_df = process_data()
-# multi_output_forest = train_predict_and_format_df(train_df, train_y_df)
-
-# @app.post("/upload-csv")
-# async def upload_csv(file: UploadFile = File(...)):
-#     if file.content_type != 'text/csv':
-#         return {"error": "Invalid file type. Please upload a CSV file."}
-
-#     contents = await file.read()
-#     df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
-
-#     num_rows = df.shape[0]
-
-#     return {"message": f"CSV file received successfully!", "num_rows": num_rows}
-
-
 
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
@@ -69,11 +51,28 @@ async def upload_excel(file: UploadFile = File(...)):
         df_transposed.columns = [unidecode.unidecode(col) for col in df_transposed.columns]
 
         df_transposed = df_transposed.drop(['RC Ventas a credito periodo fiscal anterior', 'RC Cuentas por cobrar promedio','Mes', 'Anho', 'Numero del mes'], axis=1)
+
+        columnas_a_convertir = [
+            'RI Costo mercancia/bienes vendidos', 'RI Valor promedio del inventario',
+            'LIQ Activos corrientes', 'LIQ Pasivos corrientes',
+            'ECP Pasivo no corriente', 'ECP Patrimonio neto',
+            'ELP Pasivo corriente', 'ELP Patrimonio neto',
+            'CI Utilidades antes de intereses e impuestos', 'CI Gastos financieros',
+            'MUB Ingresos totales', 'MUB Costo de productos y servicios',
+            'MUN Gastos fijos y variables', 'MUN Gastos e impuestos',
+            'MUN Ingresos totales', 'ROA Ganancia antes de impuestos',
+            'ROA Impuestos pagados', 'ROA Activos totales',
+            'ROI Ganancia', 'ROI Inversion',
+            'SOL Activos no corrientes', 'SOL Activos corrientes',
+            'SOL Pasivos corrientes', 'SOL Pasivos no corrientes'
+        ]
+
+        for col in columnas_a_convertir:
+            df_transposed[col] = pd.to_numeric(df_transposed[col], errors='coerce')
         
         df_transposed.to_csv('process_data.csv', index=False)
         indicadores_data= calcular_indicadores(df_transposed)
-
-        indicadores_data.to_csv('data_indicadores.csv', index=False)
+        indicadores_data.to_csv('data_indicadores.csv', index=False, float_format="%.3f")
         final = create_rolling_flattened_blocks( df_transposed, 'Fecha', block_size=12)
 
         result = final.to_dict(orient="records")
@@ -81,29 +80,116 @@ async def upload_excel(file: UploadFile = File(...)):
         return result
     except Exception as e:
         return {"error": str(e)}
+    
+@app.get("/prediction")
+async def get_prediction():
+    df_prediccion = pd.read_csv("result.csv")
+    df_ordenado = df_prediccion.sort_values(by="Fecha")
+    result = df_ordenado.to_dict(orient="records")
+    return result
 
-@app.get("/indicadores")
+@app.get("/prediction-indicators")
 async def get_indicadores(nombre: str):
-    # Leer el archivo CSV
+
     df_indicadores = pd.read_csv("prediccion_indicadores.csv")
-    # Verificar si el nombre del indicador existe en las columnas
+
     if nombre not in df_indicadores.columns:
         raise HTTPException(status_code=404, detail="Indicador no encontrado")
-    
-    # Retornar los valores del indicador y la fecha correspondiente
-    # result = df_indicadores[["Fecha", nombre]]result = df_indicadores[["Fecha", nombre]].sort_values(by="Fecha")
 
     result = df_indicadores[["Fecha", nombre]].sort_values(by="Fecha")
 
-
-    print(result)
-    # Convertir a una lista de diccionarios (uno por cada fila)
     result_list = result.to_dict(orient="records")
-    print(result_list)
+
     return result_list
 
 @app.get("/data")
 async def get_data():
+    df_data = pd.read_csv("process_data.csv")
+    df_ordenado = df_data.sort_values(by="Fecha")
+    result = df_ordenado.to_dict(orient="records")
+    return result
+
+@app.get("/data-indicators")
+async def get_data_indicadores(nombre: str):
     df_data = pd.read_csv("data_indicadores.csv")
+
+    if nombre not in df_data.columns:
+        raise HTTPException(status_code=404, detail="Indicador no encontrado")
+
+    result = df_data[["Fecha", nombre]].sort_values(by="Fecha")
+
     result = df_data.to_dict(orient="records")
     return result
+
+genai.configure(api_key=API_KEY)
+generation_config = {
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 300,
+    "response_mime_type": "text/plain",
+}
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config,
+)
+prompts = [
+    "A partir de los datos proporcionados\n {informacion}\n\nPregunta: {pregunta}\nPor favor, proporciona una respuesta en un máximo de 300 palabras.",
+    "Basado en los datos que me diste, responde la siguiente pregunta: {pregunta}\nInformación: {informacion}\nLimítate a 150 palabras.",
+    "Utilizando la información proporcionada: {informacion}, por favor responde a la pregunta: {pregunta} de manera clara y concisa, máximo 150 palabras.",
+]
+# Función para generar respuesta según el número de prompt
+def generar_respuesta(informacion, pregunta, prompt_numero):
+    prompt = prompts[prompt_numero].format(informacion=informacion, pregunta=pregunta)
+    
+    # Llamada al modelo para generar respuesta
+    chat_session = model.start_chat(history=[])
+    response = chat_session.send_message(prompt)
+    
+    return response.text
+
+
+
+
+@app.post("/preguntar")
+async def preguntar(request: Request):
+    data = await request.json()
+    preguntas = pd.read_csv("data_indicadores.csv")
+    
+    nombres_variables = data["nombres_variables"]  # Lista con los nombres de las variables
+    pregunta = data["pregunta"]
+    prompt_numero = data["prompt_numero"]
+    
+    # Validar que las variables existan en el DataFrame
+    columnas_disponibles = [col for col in nombres_variables if col in preguntas.columns]
+    if not columnas_disponibles:
+        return {"error": "Ninguna de las variables proporcionadas existe en el archivo CSV."}
+    
+    # Obtener los datos de las columnas solicitadas
+    informacion = preguntas[columnas_disponibles].to_dict(orient="records")
+    
+    # Generar la respuesta
+    respuesta = generar_respuesta(informacion, pregunta, prompt_numero)
+    
+    return {"respuesta": respuesta}
+
+# def generar_respuesta(informacion, pregunta):
+#     # Lógica para procesar la información y responder a la pregunta
+#     return f"Procesé la información: {informacion} para responder a la pregunta '{pregunta}'."
+
+
+
+
+# Ruta para preguntar
+# @app.post("/preguntar")
+# async def preguntar(request: Request):
+#     data = await request.json()
+#     informacion = data["informacion"]
+#     pregunta = data["pregunta"]
+#     prompt_numero = data["prompt_numero"]  # Número del prompt que se desea usar
+    
+#     # Generar la respuesta utilizando el prompt seleccionado
+#     respuesta = generar_respuesta(informacion, pregunta, prompt_numero)
+    
+#     return {"respuesta": respuesta}
