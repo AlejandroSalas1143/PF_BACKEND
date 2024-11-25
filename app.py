@@ -110,16 +110,10 @@ async def get_data():
     return result
 
 @app.get("/data-indicators")
-async def get_data_indicadores(nombre: str):
+async def get_dataindicators():
     df_data = pd.read_csv("data_indicadores.csv")
-
-    if nombre not in df_data.columns:
-        raise HTTPException(status_code=404, detail="Indicador no encontrado")
-
-    result = df_data[["Fecha", nombre]].sort_values(by="Fecha")
-
-    result_list = result.to_dict(orient="records")
-    return result_list
+    result = df_data.to_dict(orient="records")
+    return result
 
 genai.configure(api_key=API_KEY)
 generation_config = {
@@ -134,15 +128,15 @@ model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     generation_config=generation_config,
 )
-prompts = [
-    "A partir de los datos proporcionados\n {informacion}\n\nPregunta: {pregunta}\nPor favor, proporciona una respuesta en un máximo de 300 palabras.",
-    "Basado en los datos que me diste, responde la siguiente pregunta: {pregunta}\nInformación: {informacion}\nLimítate a 150 palabras.",
-    "Utilizando la información proporcionada: {informacion}, por favor responde a la pregunta: {pregunta} de manera clara y concisa, máximo 150 palabras.",
-]
+# prompts = [
+#     "A partir de los datos proporcionados\n {informacion}\n\nPregunta: {pregunta}\nPor favor, proporciona una respuesta en un máximo de 300 palabras.",
+#     "Al comparar en una grafica de correlacion el ROI vs el MARGEN DE UTILIDAD NETA que información relevante para mi empresa puedo obtener? \n Por favor, proporciona una respuesta en un máximo de 300 palabras."
+#     "Basado en los datos que me diste, responde la siguiente pregunta: {pregunta}\nInformación: {informacion}\nLimítate a 150 palabras.",
+#     "Utilizando la información proporcionada: {informacion}, por favor responde a la pregunta: {pregunta} de manera clara y concisa, máximo 150 palabras.",
+# ]
 # Función para generar respuesta según el número de prompt
-def generar_respuesta(informacion, pregunta, prompt_numero):
-    prompt = prompts[prompt_numero].format(informacion=informacion, pregunta=pregunta)
-    
+def generar_respuesta(prompt):
+        
     # Llamada al modelo para generar respuesta
     chat_session = model.start_chat(history=[])
     response = chat_session.send_message(prompt)
@@ -158,18 +152,32 @@ async def preguntar(request: Request):
     preguntas = pd.read_csv("data_indicadores.csv")
     
     nombres_variables = data["nombres_variables"]  # Lista con los nombres de las variables
-    pregunta = data["pregunta"]
-    prompt_numero = data["prompt_numero"]
+    tipo_grafico = data.get("tipo_grafico")  # Valor opcional con un default de "correlacion"
+    # prompt_numero = data.get("prompt_numero", 1)  # Valor opcional con un default de 1
     
     # Validar que las variables existan en el DataFrame
     columnas_disponibles = [col for col in nombres_variables if col in preguntas.columns]
     if not columnas_disponibles:
         return {"error": "Ninguna de las variables proporcionadas existe en el archivo CSV."}
     
-    # Obtener los datos de las columnas solicitadas
-    informacion = preguntas[columnas_disponibles].to_dict(orient="records")
+    if len(columnas_disponibles) == 1:
+        var1 = columnas_disponibles[0]
+        prompt = (
+            f"¿Qué información relevante me proporciona el indicador {var1} para mi empresa? "
+            "Por favor, proporciona una respuesta en un máximo de 150 palabras."
+        )
+    elif len(columnas_disponibles) >= 2:
+        var1, var2 = columnas_disponibles[:2]
+        prompt = (
+            f"Al comparar en una gráfica de {tipo_grafico} el {var1} vs el {var2}, "
+            f"¿qué información relevante para mi empresa puedo obtener? \n"
+            "Por favor, proporciona una respuesta en un máximo de 150 palabras."
+        )
+    else:
+        return {"error": "No se encontraron variables suficientes para generar el prompt."}
     
     # Generar la respuesta
-    respuesta = generar_respuesta(informacion, pregunta, prompt_numero)
+    respuesta = generar_respuesta(prompt)
     
     return {"respuesta": respuesta}
+
